@@ -16,34 +16,30 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Mark account as automated
+      - name: Apply bot label on Bluesky
         env:
           BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
           BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
         run: |
           python << 'EOF'
           import requests
+          import os
 
-          HANDLE = "${{ secrets.BSKY_HANDLE }}"
-          PASSWORD = "${{ secrets.BSKY_APP_PASSWORD }}"
+          handle = os.environ["BSKY_HANDLE"]
+          password = os.environ["BSKY_APP_PASSWORD"]
 
           # Login
           session = requests.post(
               "https://bsky.social/xrpc/com.atproto.server.createSession",
-              json={
-                  "identifier": HANDLE,
-                  "password": PASSWORD
-              }
+              json={"identifier": handle, "password": password}
           ).json()
 
-          access_jwt = session["accessJwt"]
+          jwt = session["accessJwt"]
           did = session["did"]
 
-          headers = {
-              "Authorization": f"Bearer {access_jwt}"
-          }
+          headers = {"Authorization": f"Bearer {jwt}"}
 
-          # Get existing profile
+          # Fetch existing profile record
           profile = requests.get(
               "https://bsky.social/xrpc/com.atproto.repo.getRecord",
               params={
@@ -56,11 +52,16 @@ jobs:
 
           record = profile["value"]
 
-          # Mark as bot/automated
-          record["bot"] = True
+          # Apply correct self-label format
+          record["labels"] = {
+              "$type": "com.atproto.label.defs#selfLabels",
+              "values": [
+                  {"val": "bot"}
+              ]
+          }
 
-          # Update profile
-          result = requests.post(
+          # Write back updated profile
+          res = requests.post(
               "https://bsky.social/xrpc/com.atproto.repo.putRecord",
               headers=headers,
               json={
@@ -71,5 +72,6 @@ jobs:
               }
           )
 
-          print(result.text)
+          print(res.status_code)
+          print(res.text)
           EOF
