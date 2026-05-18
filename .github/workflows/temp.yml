@@ -1,0 +1,75 @@
+name: Mark Bluesky Account as Automated
+
+on:
+  workflow_dispatch:
+
+jobs:
+  mark-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Mark account as automated
+        env:
+          BSKY_HANDLE: ${{ secrets.BSKY_HANDLE }}
+          BSKY_APP_PASSWORD: ${{ secrets.BSKY_APP_PASSWORD }}
+        run: |
+          python << 'EOF'
+          import requests
+
+          HANDLE = "${{ secrets.BSKY_HANDLE }}"
+          PASSWORD = "${{ secrets.BSKY_APP_PASSWORD }}"
+
+          # Login
+          session = requests.post(
+              "https://bsky.social/xrpc/com.atproto.server.createSession",
+              json={
+                  "identifier": HANDLE,
+                  "password": PASSWORD
+              }
+          ).json()
+
+          access_jwt = session["accessJwt"]
+          did = session["did"]
+
+          headers = {
+              "Authorization": f"Bearer {access_jwt}"
+          }
+
+          # Get existing profile
+          profile = requests.get(
+              "https://bsky.social/xrpc/com.atproto.repo.getRecord",
+              params={
+                  "repo": did,
+                  "collection": "app.bsky.actor.profile",
+                  "rkey": "self"
+              },
+              headers=headers
+          ).json()
+
+          record = profile["value"]
+
+          # Mark as bot/automated
+          record["bot"] = True
+
+          # Update profile
+          result = requests.post(
+              "https://bsky.social/xrpc/com.atproto.repo.putRecord",
+              headers=headers,
+              json={
+                  "repo": did,
+                  "collection": "app.bsky.actor.profile",
+                  "rkey": "self",
+                  "record": record
+              }
+          )
+
+          print(result.text)
+          EOF
